@@ -1,0 +1,121 @@
+----------------------------------------------------------------------------------------------
+                                             CODE 
+----------------------------------------------------------------------------------------------
+
+"""Naive Bayesian Classifier (basic) - buys_computer example."""
+
+HEADER = ["RID", "Age", "Income", "Student", "Credit_rating", "buys_computer"]
+DATA = [
+    (1,  "<=30",   "high",   "no",  "fair",  "no"),
+    (2,  "<=30",   "high",   "no",  "excel", "no"),
+    (3,  "31..40", "high",   "no",  "fair",  "yes"),
+    (4,  ">40",    "medium", "no",  "fair",  "yes"),
+    (5,  ">40",    "low",    "yes", "fair",  "yes"),
+    (6,  ">40",    "low",    "yes", "excel", "no"),
+    (7,  "31..40", "low",    "yes", "excel", "yes"),
+    (8,  "<=30",   "medium", "no",  "fair",  "no"),
+    (9,  "<=30",   "low",    "yes", "fair",  "yes"),
+    (10, ">40",    "medium", "yes", "fair",  "yes"),
+    (11, "<=30",   "medium", "yes", "excel", "yes"),
+    (12, "31..40", "medium", "no",  "excel", "yes"),
+    (13, "31..40", "high",   "yes", "fair",  "yes"),
+    (14, ">40",    "medium", "no",  "excel", "no"),
+]
+ATTRS = HEADER[1:-1]
+TEST_X = {"Age": "<=30", "Income": "medium", "Student": "yes", "Credit_rating": "fair"}
+
+
+def print_table(title, header, rows):
+    print(title)
+    widths = [max(len(str(x)) for x in col) for col in zip(header, *rows)]
+    line = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    fmt = lambda r: "| " + " | ".join(str(v).ljust(w) for v, w in zip(r, widths)) + " |"
+    print(line); print(fmt(header)); print(line)
+    for r in rows:
+        print(fmt(r))
+    print(line)
+
+
+def naive_bayes(data, x):
+    classes = sorted({r[-1] for r in data})
+    total = len(data)
+    scores = {}
+    for c in classes:
+        rows_c = [r for r in data if r[-1] == c]
+        prior = len(rows_c) / total
+        print(f"\nClass '{c}':  P({c}) = {len(rows_c)}/{total} = {prior:.3f}")
+        likelihood = 1.0
+        for i, a in enumerate(ATTRS, start=1):
+            count = sum(1 for r in rows_c if r[i] == x[a])
+            p = count / len(rows_c)
+            print(f"   P({a} = {x[a]!r} | {c}) = {count}/{len(rows_c)} = {p:.3f}")
+            likelihood *= p
+        scores[c] = likelihood * prior
+        print(f"   P(X | {c}) = {likelihood:.3f}")
+        print(f"   P(X | {c}) * P({c}) = {scores[c]:.3f}")
+    return scores
+
+
+if __name__ == "__main__":
+    print_table("TRAINING DATASET (buys_computer)", HEADER, DATA)
+    print_table("\nTEST SAMPLE X", ATTRS, [[TEST_X[a] for a in ATTRS]])
+
+    print("\n--- Naive Bayesian Classification ---")
+    scores = naive_bayes(DATA, TEST_X)
+    prediction = max(scores, key=scores.get)
+    print(f"\nPrediction: buys_computer = '{prediction}' for sample X")
+
+
+
+----------------------------------------------------------------------------------------------
+                                            OUTPUT
+----------------------------------------------------------------------------------------------
+
+
+
+TRAINING DATASET (buys_computer)
++-----+--------+--------+---------+---------------+---------------+
+| RID | Age    | Income | Student | Credit_rating | buys_computer |
++-----+--------+--------+---------+---------------+---------------+
+| 1   | <=30   | high   | no      | fair          | no            |
+| 2   | <=30   | high   | no      | excel         | no            |
+| 3   | 31..40 | high   | no      | fair          | yes           |
+| 4   | >40    | medium | no      | fair          | yes           |
+| 5   | >40    | low    | yes     | fair          | yes           |
+| 6   | >40    | low    | yes     | excel         | no            |
+| 7   | 31..40 | low    | yes     | excel         | yes           |
+| 8   | <=30   | medium | no      | fair          | no            |
+| 9   | <=30   | low    | yes     | fair          | yes           |
+| 10  | >40    | medium | yes     | fair          | yes           |
+| 11  | <=30   | medium | yes     | excel         | yes           |
+| 12  | 31..40 | medium | no      | excel         | yes           |
+| 13  | 31..40 | high   | yes     | fair          | yes           |
+| 14  | >40    | medium | no      | excel         | no            |
++-----+--------+--------+---------+---------------+---------------+
+
+TEST SAMPLE X
++------+--------+---------+---------------+
+| Age  | Income | Student | Credit_rating |
++------+--------+---------+---------------+
+| <=30 | medium | yes     | fair          |
++------+--------+---------+---------------+
+
+--- Naive Bayesian Classification ---
+
+Class 'no':  P(no) = 5/14 = 0.357
+   P(Age = '<=30' | no) = 3/5 = 0.600
+   P(Income = 'medium' | no) = 2/5 = 0.400
+   P(Student = 'yes' | no) = 1/5 = 0.200
+   P(Credit_rating = 'fair' | no) = 2/5 = 0.400
+   P(X | no) = 0.019
+   P(X | no) * P(no) = 0.007
+
+Class 'yes':  P(yes) = 9/14 = 0.643
+   P(Age = '<=30' | yes) = 2/9 = 0.222
+   P(Income = 'medium' | yes) = 4/9 = 0.444
+   P(Student = 'yes' | yes) = 6/9 = 0.667
+   P(Credit_rating = 'fair' | yes) = 6/9 = 0.667
+   P(X | yes) = 0.044
+   P(X | yes) * P(yes) = 0.028
+
+Prediction: buys_computer = 'yes' for sample X
