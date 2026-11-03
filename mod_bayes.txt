@@ -1,0 +1,212 @@
+------------------------------------------------------------------------------------
+                                   CODE
+------------------------------------------------------------------------------------
+
+
+
+"""Improved Naive Bayesian Classifier:
+   1. Laplace (add-k) smoothing  -> no zero-probability problem
+   2. Log-probabilities          -> no numerical underflow
+   3. Normalised posteriors      -> real P(class | X) values that sum to 1
+   4. Reusable class with fit / predict_proba / predict
+"""
+import math
+from collections import Counter, defaultdict
+
+HEADER = ["RID", "Age", "Income", "Student", "Credit_rating", "buys_computer"]
+DATA = [
+    (1,  "<=30",   "high",   "no",  "fair",  "no"),
+    (2,  "<=30",   "high",   "no",  "excel", "no"),
+    (3,  "31..40", "high",   "no",  "fair",  "yes"),
+    (4,  ">40",    "medium", "no",  "fair",  "yes"),
+    (5,  ">40",    "low",    "yes", "fair",  "yes"),
+    (6,  ">40",    "low",    "yes", "excel", "no"),
+    (7,  "31..40", "low",    "yes", "excel", "yes"),
+    (8,  "<=30",   "medium", "no",  "fair",  "no"),
+    (9,  "<=30",   "low",    "yes", "fair",  "yes"),
+    (10, ">40",    "medium", "yes", "fair",  "yes"),
+    (11, "<=30",   "medium", "yes", "excel", "yes"),
+    (12, "31..40", "medium", "no",  "excel", "yes"),
+    (13, "31..40", "high",   "yes", "fair",  "yes"),
+    (14, ">40",    "medium", "no",  "excel", "no"),
+]
+ATTRS = HEADER[1:-1]
+TEST_X = {"Age": "<=30", "Income": "medium", "Student": "yes", "Credit_rating": "fair"}
+# Age = 31..40 never occurs with class 'no' -> plain Bayes gives probability 0
+TEST_X2 = {"Age": "31..40", "Income": "medium", "Student": "no", "Credit_rating": "excel"}
+
+
+def print_table(title, header, rows):
+    print(title)
+    widths = [max(len(str(x)) for x in col) for col in zip(header, *rows)]
+    line = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    fmt = lambda r: "| " + " | ".join(str(v).ljust(w) for v, w in zip(r, widths)) + " |"
+    print(line); print(fmt(header)); print(line)
+    for r in rows:
+        print(fmt(r))
+    print(line)
+
+
+class ImprovedNaiveBayes:
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha  # Laplace smoothing; alpha=0 -> plain Bayes
+
+    def fit(self, rows, attrs):
+        self.attrs = attrs
+        labels = [r[-1] for r in rows]
+        self.n = len(rows)
+        self.class_count = Counter(labels)
+        self.classes = sorted(self.class_count)
+        self.counts = defaultdict(Counter)       # (class, attr) -> value counts
+        self.values = {a: set() for a in attrs}  # distinct values per attribute
+        for r in rows:
+            for i, a in enumerate(attrs, start=1):
+                self.counts[(r[-1], a)][r[i]] += 1
+                self.values[a].add(r[i])
+        return self
+
+    def cond_prob(self, a, v, c):
+        k = len(self.values[a])
+        return (self.counts[(c, a)][v] + self.alpha) / (self.class_count[c] + self.alpha * k)
+
+    def predict_proba(self, x, verbose=False):
+        log_scores = {}
+        for c in self.classes:
+            prior = self.class_count[c] / self.n
+            if verbose:
+                print(f"\nClass '{c}':  P({c}) = {self.class_count[c]}/{self.n} = {prior:.3f}")
+            logp = math.log(prior)
+            for a in self.attrs:
+                p = self.cond_prob(a, x[a], c)
+                if verbose:
+                    cnt = self.counts[(c, a)][x[a]]
+                    k = len(self.values[a])
+                    print(f"   P({a} = {x[a]!r} | {c}) = ({cnt}+{self.alpha:g})/"
+                          f"({self.class_count[c]}+{self.alpha:g}*{k}) = {p:.3f}")
+                logp += math.log(p) if p > 0 else float("-inf")
+            log_scores[c] = logp
+        m = max(log_scores.values())
+        exp = {c: math.exp(s - m) for c, s in log_scores.items()}
+        z = sum(exp.values())
+        return {c: v / z for c, v in exp.items()}, log_scores
+
+    def predict(self, x, verbose=False):
+        probs, _ = self.predict_proba(x, verbose)
+        return max(probs, key=probs.get), probs
+
+
+def show_result(model, x, title):
+    print(f"\n=== {title} ===")
+    print_table("Test sample X", ATTRS, [[x[a] for a in ATTRS]])
+    label, probs = model.predict(x, verbose=True)
+    print("\nPosterior probabilities P(class | X):")
+    for c, p in probs.items():
+        print(f"   P({c} | X) = {p:.4f}")
+    print(f"Prediction: buys_computer = '{label}'")
+
+
+if __name__ == "__main__":
+    print_table("TRAINING DATASET (buys_computer)", HEADER, DATA)
+    print_table("\nTEST SAMPLES", ["Sample"] + ATTRS,
+                [["X1"] + [TEST_X[a] for a in ATTRS], ["X2"] + [TEST_X2[a] for a in ATTRS]])
+
+    model = ImprovedNaiveBayes(alpha=1.0).fit(DATA, ATTRS)
+    show_result(model, TEST_X, "X1 with Laplace smoothing")
+
+    # Why smoothing matters: X2 has a zero count for class 'no'
+    plain = ImprovedNaiveBayes(alpha=0).fit(DATA, ATTRS)
+    print("\n=== X2 WITHOUT smoothing (plain Bayes) ===")
+    print("P(Age='31..40' | no) = 0/5 = 0  ->  whole product for 'no' becomes 0")
+    print("Result:", plain.predict(TEST_X2)[1])
+    show_result(model, TEST_X2, "X2 WITH Laplace smoothing")
+
+
+
+
+------------------------------------------------------------------------------------
+                                  OUTPUT
+------------------------------------------------------------------------------------                                  
+
+
+
+TRAINING DATASET (buys_computer)
++-----+--------+--------+---------+---------------+---------------+
+| RID | Age    | Income | Student | Credit_rating | buys_computer |
++-----+--------+--------+---------+---------------+---------------+
+| 1   | <=30   | high   | no      | fair          | no            |
+| 2   | <=30   | high   | no      | excel         | no            |
+| 3   | 31..40 | high   | no      | fair          | yes           |
+| 4   | >40    | medium | no      | fair          | yes           |
+| 5   | >40    | low    | yes     | fair          | yes           |
+| 6   | >40    | low    | yes     | excel         | no            |
+| 7   | 31..40 | low    | yes     | excel         | yes           |
+| 8   | <=30   | medium | no      | fair          | no            |
+| 9   | <=30   | low    | yes     | fair          | yes           |
+| 10  | >40    | medium | yes     | fair          | yes           |
+| 11  | <=30   | medium | yes     | excel         | yes           |
+| 12  | 31..40 | medium | no      | excel         | yes           |
+| 13  | 31..40 | high   | yes     | fair          | yes           |
+| 14  | >40    | medium | no      | excel         | no            |
++-----+--------+--------+---------+---------------+---------------+
+
+TEST SAMPLES
++--------+--------+--------+---------+---------------+
+| Sample | Age    | Income | Student | Credit_rating |
++--------+--------+--------+---------+---------------+
+| X1     | <=30   | medium | yes     | fair          |
+| X2     | 31..40 | medium | no      | excel         |
++--------+--------+--------+---------+---------------+
+
+=== X1 with Laplace smoothing ===
+Test sample X
++------+--------+---------+---------------+
+| Age  | Income | Student | Credit_rating |
++------+--------+---------+---------------+
+| <=30 | medium | yes     | fair          |
++------+--------+---------+---------------+
+
+Class 'no':  P(no) = 5/14 = 0.357
+   P(Age = '<=30' | no) = (3+1)/(5+1*3) = 0.500
+   P(Income = 'medium' | no) = (2+1)/(5+1*3) = 0.375
+   P(Student = 'yes' | no) = (1+1)/(5+1*2) = 0.286
+   P(Credit_rating = 'fair' | no) = (2+1)/(5+1*2) = 0.429
+
+Class 'yes':  P(yes) = 9/14 = 0.643
+   P(Age = '<=30' | yes) = (2+1)/(9+1*3) = 0.250
+   P(Income = 'medium' | yes) = (4+1)/(9+1*3) = 0.417
+   P(Student = 'yes' | yes) = (6+1)/(9+1*2) = 0.636
+   P(Credit_rating = 'fair' | yes) = (6+1)/(9+1*2) = 0.636
+
+Posterior probabilities P(class | X):
+   P(no | X) = 0.2322
+   P(yes | X) = 0.7678
+Prediction: buys_computer = 'yes'
+
+=== X2 WITHOUT smoothing (plain Bayes) ===
+P(Age='31..40' | no) = 0/5 = 0  ->  whole product for 'no' becomes 0
+Result: {'no': 0.0, 'yes': 1.0}
+
+=== X2 WITH Laplace smoothing ===
+Test sample X
++--------+--------+---------+---------------+
+| Age    | Income | Student | Credit_rating |
++--------+--------+---------+---------------+
+| 31..40 | medium | no      | excel         |
++--------+--------+---------+---------------+
+
+Class 'no':  P(no) = 5/14 = 0.357
+   P(Age = '31..40' | no) = (0+1)/(5+1*3) = 0.125
+   P(Income = 'medium' | no) = (2+1)/(5+1*3) = 0.375
+   P(Student = 'no' | no) = (4+1)/(5+1*2) = 0.714
+   P(Credit_rating = 'excel' | no) = (3+1)/(5+1*2) = 0.571
+
+Class 'yes':  P(yes) = 9/14 = 0.643
+   P(Age = '31..40' | yes) = (4+1)/(9+1*3) = 0.417
+   P(Income = 'medium' | yes) = (4+1)/(9+1*3) = 0.417
+   P(Student = 'no' | yes) = (3+1)/(9+1*2) = 0.364
+   P(Credit_rating = 'excel' | yes) = (3+1)/(9+1*2) = 0.364
+
+Posterior probabilities P(class | X):
+   P(no | X) = 0.3165
+   P(yes | X) = 0.6835
+Prediction: buys_computer = 'yes'
