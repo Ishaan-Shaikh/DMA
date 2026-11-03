@@ -1,0 +1,246 @@
+----------------------------------------- PROMPT -----------------------------------------
+implement decision tree algorithm(ID3), 
+hardcode dummy dataset, and printout dataset at first in output.
+later show final result
+
+
+
+----------------------------------------------------------------------------------------
+----------------------------------------- CODE -----------------------------------------
+
+from collections import Counter
+from math import log2
+
+
+# -------------------- Dummy dataset --------------------
+
+data = [
+    {"Outlook": "Sunny",    "Temperature": "Hot",  "Humidity": "High",   "Wind": "Weak",   "Play": "No"},
+    {"Outlook": "Sunny",    "Temperature": "Hot",  "Humidity": "High",   "Wind": "Strong", "Play": "No"},
+    {"Outlook": "Overcast", "Temperature": "Hot",  "Humidity": "High",   "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Mild", "Humidity": "High",   "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Cool", "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Cool", "Humidity": "Normal", "Wind": "Strong", "Play": "No"},
+    {"Outlook": "Overcast", "Temperature": "Cool", "Humidity": "Normal", "Wind": "Strong", "Play": "Yes"},
+    {"Outlook": "Sunny",    "Temperature": "Mild", "Humidity": "High",   "Wind": "Weak",   "Play": "No"},
+    {"Outlook": "Sunny",    "Temperature": "Cool", "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Mild", "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Sunny",    "Temperature": "Mild", "Humidity": "Normal", "Wind": "Strong", "Play": "Yes"},
+    {"Outlook": "Overcast", "Temperature": "Mild", "Humidity": "High",   "Wind": "Strong", "Play": "Yes"},
+    {"Outlook": "Overcast", "Temperature": "Hot",  "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Mild", "Humidity": "High",   "Wind": "Strong", "Play": "No"},
+]
+
+TARGET = "Play"
+FEATURES = [column for column in data[0] if column != TARGET]
+
+
+# -------------------- ID3 calculations --------------------
+
+def entropy(labels):
+    """Calculate Shannon entropy."""
+    counts = Counter(labels)
+    total = len(labels)
+
+    return -sum(
+        (count / total) * log2(count / total)
+        for count in counts.values()
+    )
+
+
+def information_gain(rows, feature, target):
+    """Calculate information gain and details for a feature split."""
+    parent_entropy = entropy([row[target] for row in rows])
+    weighted_child_entropy = 0
+    details = []
+
+    values = sorted({row[feature] for row in rows})
+
+    for value in values:
+        subset = [row for row in rows if row[feature] == value]
+        subset_entropy = entropy([row[target] for row in subset])
+        weight = len(subset) / len(rows)
+        weighted_child_entropy += weight * subset_entropy
+
+        details.append((value, len(subset), subset_entropy, weight))
+
+    gain = parent_entropy - weighted_child_entropy
+    return parent_entropy, weighted_child_entropy, gain, details
+
+
+def id3(rows, features, target, depth=0):
+    """Build a decision tree and print calculations at each node."""
+    labels = [row[target] for row in rows]
+
+    # Stop if all examples have the same class.
+    if len(set(labels)) == 1:
+        return labels[0]
+
+    # Stop if no features remain; use the majority class.
+    if not features:
+        return Counter(labels).most_common(1)[0][0]
+
+    parent_entropy = entropy(labels)
+    indent = "    " * depth
+
+    print(f"\n{indent}Node: {len(rows)} records | Entropy = {parent_entropy:.4f}")
+    print(f"{indent}{'Feature':<16}{'Weighted Entropy':>20}{'Information Gain':>20}")
+    print(f"{indent}{'-' * 56}")
+
+    gains = {}
+
+    for feature in features:
+        _, weighted_entropy, gain, details = information_gain(
+            rows, feature, target
+        )
+        gains[feature] = gain
+
+        print(f"{indent}{feature:<16}{weighted_entropy:>20.4f}{gain:>20.4f}")
+
+        for value, count, subset_entropy, weight in details:
+            print(
+                f"{indent}  {value:<14} n={count:<2} "
+                f"entropy={subset_entropy:.4f}, weight={weight:.4f}"
+            )
+
+    # Select the feature with the highest information gain.
+    best_feature = max(gains, key=gains.get)
+    print(f"{indent}Best split: {best_feature} (gain = {gains[best_feature]:.4f})")
+
+    tree = {best_feature: {}}
+    remaining_features = [f for f in features if f != best_feature]
+    majority_class = Counter(labels).most_common(1)[0][0]
+
+    for value in sorted({row[best_feature] for row in rows}):
+        subset = [row for row in rows if row[best_feature] == value]
+
+        if not subset:
+            tree[best_feature][value] = majority_class
+        else:
+            tree[best_feature][value] = id3(
+                subset, remaining_features, target, depth + 1
+            )
+
+    tree[best_feature]["_default"] = majority_class
+    return tree
+
+
+def predict(tree, example):
+    """Predict the target label for one example."""
+    if not isinstance(tree, dict):
+        return tree
+
+    feature = next(iter(tree))
+    branches = tree[feature]
+    value = example.get(feature, "_missing")
+    subtree = branches.get(value, branches["_default"])
+
+    return predict(subtree, example)
+
+
+def print_tree(tree, indent=""):
+    """Display the tree in a readable format."""
+    if not isinstance(tree, dict):
+        print(f"{indent}→ {tree}")
+        return
+
+    feature = next(iter(tree))
+
+    for value, subtree in tree[feature].items():
+        if value == "_default":
+            continue
+        print(f"{indent}{feature} = {value}:")
+        print_tree(subtree, indent + "    ")
+
+
+# -------------------- Train, display, and predict --------------------
+
+tree = id3(data, FEATURES, TARGET)
+
+print("\n" + "=" * 60)
+print("FINAL DECISION TREE")
+print("=" * 60)
+print_tree(tree)
+
+test_example = {
+    "Outlook": "Sunny",
+    "Temperature": "Cool",
+    "Humidity": "High",
+    "Wind": "Strong",
+}
+
+print("\nTest example:", test_example)
+print("Predicted class:", predict(tree, test_example))
+
+
+
+------------------------------------------------------------------------------------------
+----------------------------------------- OUTPUT -----------------------------------------
+
+Node: 14 records | Entropy = 0.9403
+Feature             Weighted Entropy    Information Gain
+--------------------------------------------------------
+Outlook                       0.6935              0.2467
+  Overcast       n=4  entropy=-0.0000, weight=0.2857
+  Rain           n=5  entropy=0.9710, weight=0.3571
+  Sunny          n=5  entropy=0.9710, weight=0.3571
+Temperature                   0.9111              0.0292
+  Cool           n=4  entropy=0.8113, weight=0.2857
+  Hot            n=4  entropy=1.0000, weight=0.2857
+  Mild           n=6  entropy=0.9183, weight=0.4286
+Humidity                      0.7885              0.1518
+  High           n=7  entropy=0.9852, weight=0.5000
+  Normal         n=7  entropy=0.5917, weight=0.5000
+Wind                          0.8922              0.0481
+  Strong         n=6  entropy=1.0000, weight=0.4286
+  Weak           n=8  entropy=0.8113, weight=0.5714
+Best split: Outlook (gain = 0.2467)
+
+    Node: 5 records | Entropy = 0.9710
+    Feature             Weighted Entropy    Information Gain
+    --------------------------------------------------------
+    Temperature                   0.9510              0.0200
+      Cool           n=2  entropy=1.0000, weight=0.4000
+      Mild           n=3  entropy=0.9183, weight=0.6000
+    Humidity                      0.9510              0.0200
+      High           n=2  entropy=1.0000, weight=0.4000
+      Normal         n=3  entropy=0.9183, weight=0.6000
+    Wind                          0.0000              0.9710
+      Strong         n=2  entropy=-0.0000, weight=0.4000
+      Weak           n=3  entropy=-0.0000, weight=0.6000
+    Best split: Wind (gain = 0.9710)
+
+    Node: 5 records | Entropy = 0.9710
+    Feature             Weighted Entropy    Information Gain
+    --------------------------------------------------------
+    Temperature                   0.4000              0.5710
+      Cool           n=1  entropy=-0.0000, weight=0.2000
+      Hot            n=2  entropy=-0.0000, weight=0.4000
+      Mild           n=2  entropy=1.0000, weight=0.4000
+    Humidity                      0.0000              0.9710
+      High           n=3  entropy=-0.0000, weight=0.6000
+      Normal         n=2  entropy=-0.0000, weight=0.4000
+    Wind                          0.9510              0.0200
+      Strong         n=2  entropy=1.0000, weight=0.4000
+      Weak           n=3  entropy=0.9183, weight=0.6000
+    Best split: Humidity (gain = 0.9710)
+
+============================================================
+FINAL DECISION TREE
+============================================================
+Outlook = Overcast:
+    → Yes
+Outlook = Rain:
+    Wind = Strong:
+        → No
+    Wind = Weak:
+        → Yes
+Outlook = Sunny:
+    Humidity = High:
+        → No
+    Humidity = Normal:
+        → Yes
+
+Test example: {'Outlook': 'Sunny', 'Temperature': 'Cool', 'Humidity': 'High', 'Wind': 'Strong'}
+
+Predicted class: No
