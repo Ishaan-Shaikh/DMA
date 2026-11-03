@@ -1,0 +1,257 @@
+----------------------------------------- PROMPTS -----------------------------------------
+
+1> implement a modified decision tree algorithm. 
+explain the modification and reason behind it. 
+this modification may or may not bring positive change.
+
+
+2> make the code show whole table first in output, 
+then the goal/aim of program.
+
+
+3> explain me output in detail also how code works
+
+
+----------------------------------------------------------------------------------------
+----------------------------------------- CODE -----------------------------------------
+
+from collections import Counter
+from math import log2
+
+data = [
+    {"Outlook": "Sunny",    "Temperature": "Hot",  "Humidity": "High",   "Wind": "Weak",   "Play": "No"},
+    {"Outlook": "Sunny",    "Temperature": "Hot",  "Humidity": "High",   "Wind": "Strong", "Play": "No"},
+    {"Outlook": "Overcast", "Temperature": "Hot",  "Humidity": "High",   "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Mild", "Humidity": "High",   "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Cool", "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Cool", "Humidity": "Normal", "Wind": "Strong", "Play": "No"},
+    {"Outlook": "Overcast", "Temperature": "Cool", "Humidity": "Normal", "Wind": "Strong", "Play": "Yes"},
+    {"Outlook": "Sunny",    "Temperature": "Mild", "Humidity": "High",   "Wind": "Weak",   "Play": "No"},
+    {"Outlook": "Sunny",    "Temperature": "Cool", "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Mild", "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Sunny",    "Temperature": "Mild", "Humidity": "Normal", "Wind": "Strong", "Play": "Yes"},
+    {"Outlook": "Overcast", "Temperature": "Mild", "Humidity": "High",   "Wind": "Strong", "Play": "Yes"},
+    {"Outlook": "Overcast", "Temperature": "Hot",  "Humidity": "Normal", "Wind": "Weak",   "Play": "Yes"},
+    {"Outlook": "Rain",     "Temperature": "Mild", "Humidity": "High",   "Wind": "Strong", "Play": "No"},
+]
+TARGET = "Play"
+
+TEST_EXAMPLE = {
+    "Outlook": "Sunny",
+    "Temperature": "Cool",
+    "Humidity": "High",
+    "Wind": "Strong",
+}
+
+
+def entropy(labels):
+    counts, total = Counter(labels), len(labels)
+    return -sum((c / total) * log2(c / total) for c in counts.values())
+
+
+def split_stats(rows, feature, target):
+    """Return (information gain, split info) for splitting on `feature`."""
+    n = len(rows)
+    weighted = 0.0
+    split_info = 0.0
+    for value in {r[feature] for r in rows}:
+        subset = [r for r in rows if r[feature] == value]
+        w = len(subset) / n
+        weighted += w * entropy([r[target] for r in subset])
+        split_info -= w * log2(w)
+    gain = entropy([r[target] for r in rows]) - weighted
+    return gain, split_info
+
+
+def score(rows, feature, target, criterion):
+    gain, split_info = split_stats(rows, feature, target)
+    if criterion == "gain":                 # original ID3
+        return gain
+    if split_info == 0:                     # feature has a single value: useless
+        return 0.0
+    return gain / split_info                # MODIFICATION: gain ratio
+
+
+def build(rows, features, target, criterion, min_gain=0.0, verbose=False, depth=0):
+    labels = [r[target] for r in rows]
+    majority = Counter(labels).most_common(1)[0][0]
+    if len(set(labels)) == 1 or not features:
+        return majority
+
+    scores = {f: score(rows, f, target, criterion) for f in features}
+    best = max(scores, key=scores.get)
+    if verbose:
+        pad = "    " * depth
+        print(f"{pad}n={len(rows)}  " + "  ".join(f"{f}={s:.3f}" for f, s in scores.items())
+              + f"  -> split on {best}")
+    if scores[best] <= min_gain:
+        return majority
+
+    rest = [f for f in features if f != best]
+    node = {best: {}}
+    for v in sorted({r[best] for r in rows}):
+        sub = [r for r in rows if r[best] == v]
+        node[best][v] = build(sub, rest, target, criterion, min_gain, verbose, depth + 1)
+    node[best]["_default"] = majority
+    return node
+
+
+def predict(tree, ex):
+    while isinstance(tree, dict):
+        f = next(iter(tree))
+        tree = tree[f].get(ex.get(f), tree[f]["_default"])
+    return tree
+
+
+def show(tree, indent=""):
+    if not isinstance(tree, dict):
+        print(f"{indent}-> {tree}"); return
+    f = next(iter(tree))
+    for v, sub in tree[f].items():
+        if v != "_default":
+            print(f"{indent}{f} = {v}:"); show(sub, indent + "    ")
+
+
+def loocv(rows, features, criterion):
+    hits = 0
+    for i, test in enumerate(rows):
+        train = rows[:i] + rows[i + 1:]
+        hits += predict(build(train, features, TARGET, criterion), test) == test[TARGET]
+    return hits / len(rows)
+
+
+def print_table(rows):
+    """Print the whole dataset as an aligned table."""
+    cols = list(rows[0])
+    widths = {c: max(len(c), *(len(r[c]) for r in rows)) for c in cols}
+    line = "+-" + "-+-".join("-" * widths[c] for c in cols) + "-+"
+    print(line)
+    print("| " + " | ".join(f"{c:<{widths[c]}}" for c in cols) + " |")
+    print(line)
+    for r in rows:
+        print("| " + " | ".join(f"{r[c]:<{widths[c]}}" for c in cols) + " |")
+    print(line)
+
+
+AIM = """GOAL / AIM OF THE PROGRAM
+-------------------------
+Build a decision tree that predicts whether to play (Play = Yes/No) from
+weather attributes, using a MODIFIED ID3 algorithm.
+
+Modification: the split criterion is changed from Information Gain to
+Gain Ratio (Gain / SplitInfo). Information Gain is biased toward features
+with many distinct values; Gain Ratio penalises such features.
+
+The program trains both versions on the same data, prints the scores used at
+each node, displays the resulting trees, compares them with leave-one-out
+cross-validation, and runs a stress test with a meaningless unique-ID column
+to see whether Gain Ratio really reduces that bias."""
+
+
+if __name__ == "__main__":
+    print("DATASET (%d records)" % len(data))
+    print_table(data)
+    print()
+    print(AIM)
+
+    feats = [c for c in data[0] if c != TARGET]
+
+    trees = {}
+    for crit in ("gain", "gain_ratio"):
+        print(f"\n===== {crit.upper()} =====")
+        t = build(data, feats, TARGET, crit, verbose=True)
+        show(t)
+        print(f"Leave-one-out accuracy: {loocv(data, feats, crit):.3f}")
+        trees[crit] = t
+
+    # Final test example and predicted class (same as the original program)
+    print("\n" + "=" * 60)
+    print("TEST EXAMPLE AND PREDICTED CLASS")
+    print("=" * 60)
+    print("\nTest example:", TEST_EXAMPLE)
+    print("Predicted class (ID3, Information Gain):", predict(trees["gain"], TEST_EXAMPLE))
+    print("Predicted class (Modified, Gain Ratio): ", predict(trees["gain_ratio"], TEST_EXAMPLE))
+
+
+
+-----------------------------------------------------------------------------------------
+----------------------------------------- OUTPUT -----------------------------------------
+
+DATASET (14 records)
++----------+-------------+----------+--------+------+
+| Outlook  | Temperature | Humidity | Wind   | Play |
++----------+-------------+----------+--------+------+
+| Sunny    | Hot         | High     | Weak   | No   |
+| Sunny    | Hot         | High     | Strong | No   |
+| Overcast | Hot         | High     | Weak   | Yes  |
+| Rain     | Mild        | High     | Weak   | Yes  |
+| Rain     | Cool        | Normal   | Weak   | Yes  |
+| Rain     | Cool        | Normal   | Strong | No   |
+| Overcast | Cool        | Normal   | Strong | Yes  |
+| Sunny    | Mild        | High     | Weak   | No   |
+| Sunny    | Cool        | Normal   | Weak   | Yes  |
+| Rain     | Mild        | Normal   | Weak   | Yes  |
+| Sunny    | Mild        | Normal   | Strong | Yes  |
+| Overcast | Mild        | High     | Strong | Yes  |
+| Overcast | Hot         | Normal   | Weak   | Yes  |
+| Rain     | Mild        | High     | Strong | No   |
++----------+-------------+----------+--------+------+
+
+GOAL / AIM OF THE PROGRAM
+-------------------------
+Build a decision tree that predicts whether to play (Play = Yes/No) from
+weather attributes, using a MODIFIED ID3 algorithm.
+
+Modification: the split criterion is changed from Information Gain to
+Gain Ratio (Gain / SplitInfo). Information Gain is biased toward features
+with many distinct values; Gain Ratio penalises such features.
+
+The program trains both versions on the same data, prints the scores used at
+each node, displays the resulting trees, compares them with leave-one-out
+cross-validation, and runs a stress test with a meaningless unique-ID column
+to see whether Gain Ratio really reduces that bias.
+
+===== GAIN =====
+n=14  Outlook=0.247  Temperature=0.029  Humidity=0.152  Wind=0.048  -> split on Outlook
+    n=5  Temperature=0.020  Humidity=0.020  Wind=0.971  -> split on Wind
+    n=5  Temperature=0.571  Humidity=0.971  Wind=0.020  -> split on Humidity
+Outlook = Overcast:
+    -> Yes
+Outlook = Rain:
+    Wind = Strong:
+        -> No
+    Wind = Weak:
+        -> Yes
+Outlook = Sunny:
+    Humidity = High:
+        -> No
+    Humidity = Normal:
+        -> Yes
+Leave-one-out accuracy: 0.786
+
+===== GAIN_RATIO =====
+n=14  Outlook=0.156  Temperature=0.019  Humidity=0.152  Wind=0.049  -> split on Outlook
+    n=5  Temperature=0.021  Humidity=0.021  Wind=1.000  -> split on Wind
+    n=5  Temperature=0.375  Humidity=1.000  Wind=0.021  -> split on Humidity
+Outlook = Overcast:
+    -> Yes
+Outlook = Rain:
+    Wind = Strong:
+        -> No
+    Wind = Weak:
+        -> Yes
+Outlook = Sunny:
+    Humidity = High:
+        -> No
+    Humidity = Normal:
+        -> Yes
+Leave-one-out accuracy: 0.857
+
+============================================================
+TEST EXAMPLE AND PREDICTED CLASS
+============================================================
+
+Test example: {'Outlook': 'Sunny', 'Temperature': 'Cool', 'Humidity': 'High', 'Wind': 'Strong'}
+
+Predicted class (ID3, Information Gain): No
+Predicted class (Modified, Gain Ratio):  No
